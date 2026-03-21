@@ -798,14 +798,11 @@ func (p *Processor) createDetection(item birdnet.Results, result datastore.Resul
 	// Exclude the primary species since it's already stored as Detection.LabelID.
 	additionalResults := convertToAdditionalResults(item.Results, scientificName)
 
-	// Update species tracker if enabled
-	p.speciesTrackerMu.RLock()
-	tracker := p.NewSpeciesTracker
-	p.speciesTrackerMu.RUnlock()
-
-	if tracker != nil {
-		tracker.UpdateSpecies(scientificName, item.StartTime)
-	}
+	// NOTE: Species tracker is NOT updated here. The authoritative check-and-update
+	// happens atomically in DatabaseAction.ExecuteContext via CheckAndUpdateSpecies.
+	// Calling UpdateSpecies here would prematurely mark the species as "seen" before
+	// the detection is approved and saved, undermining the atomic new-species gate
+	// that drives push notifications (see GitHub #2403).
 
 	// Generate unique correlation ID for detection tracking
 	correlationID := p.generateCorrelationID(commonName, item.StartTime)
