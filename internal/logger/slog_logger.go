@@ -140,7 +140,7 @@ func (l *SlogLogger) ReopenLogFile() error {
 // The returned logger shares the parent's handler but gets its own copy of fields
 // to ensure immutability - modifications to parent fields won't affect children.
 func (l *SlogLogger) Module(name string) Logger {
-	if l == nil {
+	if l == nil || l.slogLogger == nil {
 		return nil
 	}
 
@@ -163,7 +163,7 @@ func (l *SlogLogger) Module(name string) Logger {
 
 // Trace logs a trace message (most verbose level)
 func (l *SlogLogger) Trace(msg string, fields ...Field) {
-	if l == nil {
+	if l == nil || l.slogLogger == nil {
 		return
 	}
 	if l.level > traceLevelValue {
@@ -174,7 +174,7 @@ func (l *SlogLogger) Trace(msg string, fields ...Field) {
 
 // Debug logs a debug message
 func (l *SlogLogger) Debug(msg string, fields ...Field) {
-	if l == nil {
+	if l == nil || l.slogLogger == nil {
 		return
 	}
 	if l.level > slog.LevelDebug {
@@ -185,7 +185,7 @@ func (l *SlogLogger) Debug(msg string, fields ...Field) {
 
 // Info logs an info message
 func (l *SlogLogger) Info(msg string, fields ...Field) {
-	if l == nil {
+	if l == nil || l.slogLogger == nil {
 		return
 	}
 	if l.level > slog.LevelInfo {
@@ -196,7 +196,7 @@ func (l *SlogLogger) Info(msg string, fields ...Field) {
 
 // Warn logs a warning message
 func (l *SlogLogger) Warn(msg string, fields ...Field) {
-	if l == nil {
+	if l == nil || l.slogLogger == nil {
 		return
 	}
 	if l.level > slog.LevelWarn {
@@ -207,7 +207,7 @@ func (l *SlogLogger) Warn(msg string, fields ...Field) {
 
 // Error logs an error message
 func (l *SlogLogger) Error(msg string, fields ...Field) {
-	if l == nil {
+	if l == nil || l.slogLogger == nil {
 		return
 	}
 	l.log(slog.LevelError, msg, fields...)
@@ -215,7 +215,7 @@ func (l *SlogLogger) Error(msg string, fields ...Field) {
 
 // Log logs a message with explicit level
 func (l *SlogLogger) Log(level LogLevel, msg string, fields ...Field) {
-	if l == nil {
+	if l == nil || l.slogLogger == nil {
 		return
 	}
 	l.log(parseSlogLevel(level), msg, fields...)
@@ -223,7 +223,7 @@ func (l *SlogLogger) Log(level LogLevel, msg string, fields ...Field) {
 
 // With returns a new logger with accumulated fields
 func (l *SlogLogger) With(fields ...Field) Logger {
-	if l == nil {
+	if l == nil || l.slogLogger == nil {
 		return nil
 	}
 
@@ -241,7 +241,7 @@ func (l *SlogLogger) With(fields ...Field) Logger {
 
 // WithContext returns a logger with context values
 func (l *SlogLogger) WithContext(ctx context.Context) Logger {
-	if l == nil {
+	if l == nil || l.slogLogger == nil {
 		return nil
 	}
 	if ctx == nil {
@@ -298,7 +298,7 @@ func (l *SlogLogger) Close() error {
 
 // log is the internal logging method
 func (l *SlogLogger) log(level slog.Level, msg string, fields ...Field) {
-	if l == nil {
+	if l == nil || l.slogLogger == nil {
 		return
 	}
 
