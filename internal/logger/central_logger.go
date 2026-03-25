@@ -481,8 +481,11 @@ type moduleLogger struct {
 // The returned logger shares the parent's slog.Logger but gets its own copy of fields
 // to ensure immutability - modifications to parent fields won't affect children.
 func (m *moduleLogger) Module(name string) Logger {
-	if m == nil || m.logger == nil {
+	if m == nil {
 		return nil
+	}
+	if m.logger == nil {
+		return m
 	}
 
 	return &moduleLogger{
@@ -544,8 +547,11 @@ func (m *moduleLogger) Log(level LogLevel, msg string, fields ...Field) {
 
 // With returns a new logger with accumulated fields
 func (m *moduleLogger) With(fields ...Field) Logger {
-	if m == nil || m.logger == nil {
+	if m == nil {
 		return nil
+	}
+	if m.logger == nil {
+		return m
 	}
 
 	return &moduleLogger{
@@ -559,8 +565,11 @@ func (m *moduleLogger) With(fields ...Field) Logger {
 
 // WithContext returns a logger with context values
 func (m *moduleLogger) WithContext(ctx context.Context) Logger {
-	if m == nil || m.logger == nil {
+	if m == nil {
 		return nil
+	}
+	if m.logger == nil {
+		return m
 	}
 
 	if ctx == nil {

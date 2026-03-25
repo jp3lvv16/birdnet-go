@@ -140,8 +140,11 @@ func (l *SlogLogger) ReopenLogFile() error {
 // The returned logger shares the parent's handler but gets its own copy of fields
 // to ensure immutability - modifications to parent fields won't affect children.
 func (l *SlogLogger) Module(name string) Logger {
-	if l == nil || l.slogLogger == nil {
+	if l == nil {
 		return nil
+	}
+	if l.slogLogger == nil {
+		return l
 	}
 
 	moduleName := name
@@ -223,8 +226,11 @@ func (l *SlogLogger) Log(level LogLevel, msg string, fields ...Field) {
 
 // With returns a new logger with accumulated fields
 func (l *SlogLogger) With(fields ...Field) Logger {
-	if l == nil || l.slogLogger == nil {
+	if l == nil {
 		return nil
+	}
+	if l.slogLogger == nil {
+		return l
 	}
 
 	return &SlogLogger{
@@ -241,8 +247,11 @@ func (l *SlogLogger) With(fields ...Field) Logger {
 
 // WithContext returns a logger with context values
 func (l *SlogLogger) WithContext(ctx context.Context) Logger {
-	if l == nil || l.slogLogger == nil {
+	if l == nil {
 		return nil
+	}
+	if l.slogLogger == nil {
+		return l
 	}
 	if ctx == nil {
 		return l
