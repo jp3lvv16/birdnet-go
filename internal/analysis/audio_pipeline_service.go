@@ -165,13 +165,11 @@ func (p *AudioPipelineService) Start(_ context.Context) error {
 			logger.String("operation", "startup_audio_check"))
 	}
 
-	// Register watchdog reset callback so analysis buffers are allocated
-	// and monitors are recreated when the watchdog force-resets a stuck stream.
+	// Register watchdog reset callback so analysis monitors are recreated
+	// when the watchdog force-resets a stuck stream. Buffers are NOT
+	// deallocated during a reset — the source ID is reused and buffers
+	// remain allocated. Only the monitors need to be recreated.
 	p.engine.FFmpegManager().SetOnStreamReset(func(newSourceID string) {
-		// Allocate secondary model buffers for the new source. The engine's
-		// AddSource() only allocates the primary model buffer.
-		p.allocateSecondaryModelBuffers(newSourceID, "watchdog_reset")
-
 		if err := p.bufferMgr.AddMonitor(newSourceID); err != nil {
 			GetLogger().Warn("failed to add monitor after watchdog stream reset",
 				logger.String("source_id", newSourceID),
