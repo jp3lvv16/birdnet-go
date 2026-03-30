@@ -165,9 +165,13 @@ func (p *AudioPipelineService) Start(_ context.Context) error {
 			logger.String("operation", "startup_audio_check"))
 	}
 
-	// Register watchdog reset callback so analysis monitors are recreated
-	// when the watchdog force-resets a stuck stream.
+	// Register watchdog reset callback so analysis buffers are allocated
+	// and monitors are recreated when the watchdog force-resets a stuck stream.
 	p.engine.FFmpegManager().SetOnStreamReset(func(newSourceID string) {
+		// Allocate secondary model buffers for the new source. The engine's
+		// AddSource() only allocates the primary model buffer.
+		p.allocateSecondaryModelBuffers(newSourceID, "watchdog_reset")
+
 		if err := p.bufferMgr.AddMonitor(newSourceID); err != nil {
 			GetLogger().Warn("failed to add monitor after watchdog stream reset",
 				logger.String("source_id", newSourceID),
@@ -484,35 +488,14 @@ func (p *AudioPipelineService) registerConsumersForSources(sourceIDs []string, s
 		}
 
 		// Allocate analysis buffers for secondary models. The engine
-		// already allocates a buffer for the primary model in AddSource(),
-		// so only non-primary models need allocation here. Track which
-		// models have usable buffers so we only create targets for them.
-		allocatedModels := make(map[string]bool, len(modelInfos))
-		allocatedModels[primaryInfo.ID] = true // pre-allocated by engine
-		for i := range modelInfos {
-			if modelInfos[i].ID == primaryInfo.ID {
-				continue
-			}
-			spec := modelInfos[i].Spec
-			clipBytes := spec.SampleRate * int(spec.ClipLength.Seconds()) * conf.NumChannels * (conf.BitDepth / 8)
-			overlapBytes := clipBytes / 2 // 50% overlap, matching primary model ratio
-			readSize := clipBytes - overlapBytes
-			if allocErr := bufMgr.AllocateAnalysis(sid, modelInfos[i].ID, clipBytes, overlapBytes, readSize); allocErr != nil {
-				log.Warn("failed to allocate analysis buffer for secondary model",
-					logger.String("source_id", sid),
-					logger.String("model_id", modelInfos[i].ID),
-					logger.Error(allocErr),
-					logger.String("operation", operation))
-				continue
-			}
-			allocatedModels[modelInfos[i].ID] = true
-		}
+		// already allocates a buffer for the primary model in AddSource().
+		p.allocateSecondaryModelBuffers(sid, operation)
 
-		// Convert to ModelTarget for the buffer consumer, excluding
-		// models whose buffer allocation failed.
+		// Build model targets. Verify each model's buffer exists so we
+		// exclude any model whose allocation failed.
 		targets := make([]ModelTarget, 0, len(modelInfos))
 		for i := range modelInfos {
-			if allocatedModels[modelInfos[i].ID] {
+			if _, err := bufMgr.AnalysisBuffer(sid, modelInfos[i].ID); err == nil {
 				targets = append(targets, ModelTarget{ModelID: modelInfos[i].ID, SampleRate: modelInfos[i].Spec.SampleRate})
 			}
 		}
@@ -708,6 +691,33 @@ func (p *AudioPipelineService) buildSourceConfigsWithModels() []sourceConfigWith
 	}
 
 	return result
+}
+
+// allocateSecondaryModelBuffers allocates analysis buffers for all loaded
+// models except the primary one. It is used by both registerConsumersForSources
+// (initial setup / hot-reload) and the watchdog reset callback.
+func (p *AudioPipelineService) allocateSecondaryModelBuffers(sourceID, operation string) {
+	log := GetLogger()
+	primaryID := p.bnAnalyzer.BirdNET().ModelInfo.ID
+	bufMgr := p.engine.BufferManager()
+
+	allInfos := p.bnAnalyzer.BirdNET().ModelInfos()
+	for i := range allInfos {
+		if allInfos[i].ID == primaryID {
+			continue
+		}
+		spec := allInfos[i].Spec
+		clipBytes := spec.SampleRate * int(spec.ClipLength.Seconds()) * conf.NumChannels * (conf.BitDepth / 8)
+		overlapBytes := clipBytes / 2 // 50% overlap, matching primary model ratio
+		readSize := clipBytes - overlapBytes
+		if err := bufMgr.AllocateAnalysis(sourceID, allInfos[i].ID, clipBytes, overlapBytes, readSize); err != nil {
+			log.Warn("failed to allocate analysis buffer for secondary model",
+				logger.String("source_id", sourceID),
+				logger.String("model_id", allInfos[i].ID),
+				logger.Error(err),
+				logger.String("operation", operation))
+		}
+	}
 }
 
 // buildMonitorConfigs builds the map[sourceID][]monitorConfig needed by
