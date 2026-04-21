@@ -173,6 +173,31 @@ export function coerceObject<T extends Record<string, unknown>>(
   return defaultValue;
 }
 
+function coerceStreamConfig(stream: unknown): UnknownSettings {
+  const rawStream = coerceObject(stream, {} as UnknownSettings);
+
+  return {
+    ...rawStream,
+    name: coerceString(rawStream.name, ''),
+    url: coerceString(rawStream.url, ''),
+    enabled: coerceBoolean(rawStream.enabled, true),
+    type: coerceString(rawStream.type, 'rtsp'),
+    transport:
+      rawStream.transport === 'udp' || rawStream.transport === 'tcp'
+        ? rawStream.transport
+        : undefined,
+  };
+}
+
+function coerceRTSPSettings(settings: unknown): UnknownSettings {
+  const rawRtsp = coerceObject(settings, {} as UnknownSettings);
+
+  return {
+    ...rawRtsp,
+    streams: coerceArray(rawRtsp.streams, []).map(coerceStreamConfig),
+  };
+}
+
 /**
  * Validate and coerce BirdNET settings
  */
@@ -768,6 +793,10 @@ export function coerceSettings(section: string, data: UnknownSettings): UnknownS
 
       if (Object.prototype.hasOwnProperty.call(data, 'species')) {
         coercedRealtime.species = coerceSpeciesSettings(data.species as PartialSpeciesSettings);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(data, 'rtsp')) {
+        coercedRealtime.rtsp = coerceRTSPSettings(data.rtsp);
       }
 
       if (Object.prototype.hasOwnProperty.call(data, 'falsePositiveFilter')) {

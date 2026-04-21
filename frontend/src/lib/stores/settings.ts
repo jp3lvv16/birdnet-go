@@ -195,6 +195,7 @@ export const defaultQuietHoursConfig: QuietHoursConfig = {
 export interface StreamConfig {
   name: string; // Required: descriptive name like "Front Yard"
   url: string; // Required: stream URL
+  enabled: boolean; // Materialized during settings coercion for backward compatibility
   type: StreamType; // Stream type: rtsp, http, hls, rtmp, udp
   transport?: 'tcp' | 'udp'; // Transport protocol (for RTSP/RTMP only)
   quietHours?: QuietHoursConfig; // Quiet hours configuration

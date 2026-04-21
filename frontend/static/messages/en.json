@@ -2885,6 +2885,8 @@
       "streams": {
         "streamLabel": "Stream",
         "nameLabel": "Stream Name",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
         "namePlaceholder": "e.g., Front Yard Feeder",
         "nameHelp": "A descriptive name to identify this audio stream",
         "urlLabel": "Stream URL",

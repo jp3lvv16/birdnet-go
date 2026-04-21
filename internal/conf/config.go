@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/fs"
+	"iter"
 	"os"
 	"path/filepath"
 	"slices"
@@ -547,10 +548,16 @@ const DefaultTransport = "tcp"
 type StreamConfig struct {
 	Name       string           `yaml:"name" json:"name" mapstructure:"name"`                           // Required: descriptive name like "Front Yard"
 	URL        string           `yaml:"url" json:"url" mapstructure:"url"`                              // Required: stream URL
+	Enabled    bool             `yaml:"enabled" json:"enabled" mapstructure:"enabled"`                  // true when the configured stream should be active
 	Type       string           `yaml:"type" json:"type" mapstructure:"type"`                           // Stream type: rtsp, http, hls, rtmp, udp
 	Transport  string           `yaml:"transport" json:"transport" mapstructure:"transport"`            // Transport: tcp or udp (for RTSP/RTMP)
 	QuietHours QuietHoursConfig `yaml:"quietHours" json:"quietHours" mapstructure:"quietHours"`         // Quiet hours configuration
 	Models     []string         `yaml:"models,omitempty" json:"models,omitempty" mapstructure:"models"` // Model IDs for this stream (e.g., ["birdnet", "perch_v2"])
+}
+
+// IsEnabled returns the effective enabled state for a stream.
+func (s *StreamConfig) IsEnabled() bool {
+	return s.Enabled
 }
 
 // RTSPSettings contains settings for audio streaming (supports multiple protocols).
@@ -561,6 +568,38 @@ type RTSPSettings struct {
 	Transport        string             `yaml:"transport,omitempty" json:"transport,omitempty" mapstructure:"transport"`  // Legacy: global default, migrated on load
 	Health           RTSPHealthSettings `yaml:"health" json:"health" mapstructure:"health"`                               // Health monitoring settings
 	FFmpegParameters []string           `yaml:"ffmpegParameters" json:"ffmpegParameters" mapstructure:"ffmpegParameters"` // Custom FFmpeg parameters
+}
+
+// AllStreams returns an iterator over all configured streams as addressable pointers,
+// regardless of enabled state. Use this when every stream must be visited (e.g.
+// migrations, validation, applying defaults). Mutations via the pointer are reflected
+// in the original slice.
+func (r *RTSPSettings) AllStreams() iter.Seq2[int, *StreamConfig] {
+	return func(yield func(int, *StreamConfig) bool) {
+		for i := range r.Streams {
+			if !yield(i, &r.Streams[i]) {
+				return
+			}
+		}
+	}
+}
+
+// EnabledStreams returns an iterator over streams that are both enabled and have a
+// non-empty URL. Call sites that process active streams should use this instead of
+// ranging over Streams directly and checking IsEnabled(). Mutations via the pointer
+// are reflected in the original slice.
+func (r *RTSPSettings) EnabledStreams() iter.Seq2[int, *StreamConfig] {
+	return func(yield func(int, *StreamConfig) bool) {
+		for i := range r.Streams {
+			s := &r.Streams[i]
+			if s.URL == "" || !s.IsEnabled() {
+				continue
+			}
+			if !yield(i, s) {
+				return
+			}
+		}
+	}
 }
 
 // CRITICAL: Legacy fields (URLs, Transport) MUST include json tags to accept
@@ -1533,6 +1572,66 @@ func persistMigration(settings *Settings, label string) {
 	}
 }
 
+// migrateStreamEnabledDefaults materializes missing enabled fields for legacy
+// RTSP stream configs before viper unmarshals them into the strongly typed
+// settings struct.
+func migrateStreamEnabledDefaults() bool {
+	normalizedStreams, migrated := normalizeRTSPStreamEnabledDefaults(viper.Get("realtime.rtsp.streams"))
+	if !migrated {
+		return false
+	}
+
+	viper.Set("realtime.rtsp.streams", normalizedStreams)
+	return true
+}
+
+// ensureSessionSecret backfills and persists security.sessionsecret for older
+// configs that predate the field so session signing remains stable across
+// restarts. Unlike the security package's temporary runtime fallback, this
+// updates the loaded settings and best-effort saves the generated secret.
+func ensureSessionSecret(settings *Settings) error {
+	if settings.Security.SessionSecret != "" {
+		return nil
+	}
+
+	sessionSecret, err := GenerateRandomSecret()
+	if err != nil {
+		return errors.New(err).
+			Component("conf").
+			Category(errors.CategoryConfiguration).
+			Context("operation", "generate_session_secret").
+			Build()
+	}
+
+	settings.Security.SessionSecret = sessionSecret
+
+	// Also set it in viper so it gets saved to config file
+	viper.Set("security.sessionsecret", sessionSecret)
+
+	// Log that we generated a new session secret
+	GetLogger().Info("Generated new SessionSecret for existing configuration")
+
+	// Save the updated config back to file to persist the generated secret
+	// This ensures the secret remains the same across restarts
+	configFile := viper.ConfigFileUsed()
+	if configFile == "" {
+		return nil
+	}
+
+	if err := SaveYAMLConfig(configFile, settings); err != nil {
+		// Log the error but don't fail - the generated secret will work for this session
+		GetLogger().Warn("Failed to save generated SessionSecret to config file", logger.Error(err))
+		return nil
+	}
+
+	// Set secure file permissions after saving
+	if err := os.Chmod(configFile, 0o600); err != nil {
+		GetLogger().Warn("Failed to set secure permissions on config file", logger.Error(err))
+	}
+
+	return nil
+}
+
 // Load reads the configuration file and environment variables into GlobalConfig.
 //
 //nolint:gocognit // Config loading is inherently complex; splitting adds indirection without clarity.
@@ -1547,6 +1646,10 @@ func Load() (*Settings, error) {
 			Context("operation", "init-viper").
 			Build()
 	}
+
+	// Legacy stream entries omitted the enabled field entirely. Materialize the
+	// missing field before unmarshal so the runtime struct can use a plain bool.
+	streamEnabledMigrated := migrateStreamEnabledDefaults()
 
 	// Unmarshal the config into settings, with custom Duration decode hook
 	if err := viper.Unmarshal(settings, viper.DecodeHook(DurationDecodeHook())); err != nil {
@@ -1611,6 +1714,10 @@ func Load() (*Settings, error) {
 		persistMigration(settings, "source models")
 	}
 
+	if streamEnabledMigrated {
+		persistMigration(settings, "stream enabled defaults")
+	}
+
 	// Validate multi-model configuration
 	if err := settings.applyModelValidation(); err != nil {
 		return nil, err
@@ -1635,39 +1742,8 @@ func Load() (*Settings, error) {
 	settings.MigrateLocationConfigured()
 
 	// Auto-generate SessionSecret if not set (for backward compatibility)
-	if settings.Security.SessionSecret == "" {
-		// Generate a new session secret
-		sessionSecret, err := GenerateRandomSecret()
-		if err != nil {
-			return nil, errors.New(err).
-				Component("conf").
-				Category(errors.CategoryConfiguration).
-				Context("operation", "generate_session_secret").
-				Build()
-		}
-
-		settings.Security.SessionSecret = sessionSecret
-
-		// Also set it in viper so it gets saved to config file
-		viper.Set("security.sessionsecret", sessionSecret)
-
-		// Log that we generated a new session secret
-		GetLogger().Info("Generated new SessionSecret for existing configuration")
-
-		// Save the updated config back to file to persist the generated secret
-		// This ensures the secret remains the same across restarts
-		configFile := viper.ConfigFileUsed()
-		if configFile != "" {
-			if err := SaveYAMLConfig(configFile, settings); err != nil {
-				// Log the error but don't fail - the generated secret will work for this session
-				GetLogger().Warn("Failed to save generated SessionSecret to config file", logger.Error(err))
-			} else {
-				// Set secure file permissions after saving
-				if err := os.Chmod(configFile, 0o600); err != nil {
-					GetLogger().Warn("Failed to set secure permissions on config file", logger.Error(err))
-				}
-			}
-		}
+	if err := ensureSessionSecret(settings); err != nil {
+		return nil, err
 	}
 
 	// Validate settings
@@ -2066,6 +2142,7 @@ func (s *Settings) MigrateRTSPConfig() bool {
 		stream := StreamConfig{
 			Name:      fmt.Sprintf("Stream %d", streamIndex),
 			URL:       url,
+			Enabled:   true,
 			Type:      streamType,
 			Transport: transport,
 		}
@@ -2138,8 +2215,7 @@ func (s *Settings) MigrateSourceModels() bool {
 		migrated = true
 	}
 
-	for i := range s.Realtime.RTSP.Streams {
-		stream := &s.Realtime.RTSP.Streams[i]
+	for _, stream := range s.Realtime.RTSP.AllStreams() {
 		if len(stream.Models) > 0 {
 			continue
 		}
@@ -2148,6 +2224,45 @@ func (s *Settings) MigrateSourceModels() bool {
 	}
 
 	return migrated
+}
+
+// normalizeRTSPStreamEnabledDefaults materializes enabled=true for legacy raw
+// RTSP stream entries that predate the field. It operates on Viper's raw data
+// before unmarshal so StreamConfig can keep a plain bool.
+func normalizeRTSPStreamEnabledDefaults(rawStreams any) ([]any, bool) {
+	streams, ok := rawStreams.([]any)
+	if !ok {
+		return nil, false
+	}
+
+	normalized := make([]any, len(streams))
+	migrated := false
+
+	for i, rawStream := range streams {
+		streamMap, ok := rawStream.(map[string]any)
+		if !ok {
+			normalized[i] = rawStream
+			continue
+		}
+		if val, exists := streamMap["enabled"]; exists && val != nil {
+			normalized[i] = rawStream
+			continue
+		}
+
+		copied := make(map[string]any, len(streamMap)+1)
+		for key, value := range streamMap {
+			copied[key] = value
+		}
+		copied["enabled"] = true
+		normalized[i] = copied
+		migrated = true
+	}
+
+	if !migrated {
+		return nil, false
+	}
+
+	return normalized, true
 }
 
 // ValidateModelConfig checks model-related configuration for errors and
@@ -2195,8 +2310,7 @@ func (s *Settings) ValidateModelConfig(knownIDs map[string]bool) []string {
 			}
 		}
 	}
-	for i := range s.Realtime.RTSP.Streams {
-		stream := &s.Realtime.RTSP.Streams[i]
+	for _, stream := range s.Realtime.RTSP.AllStreams() {
 		for _, modelID := range stream.Models {
 			if !enabledSet[strings.ToLower(modelID)] {
 				issues = append(issues, "warning: stream \""+stream.Name+"\" references model \""+modelID+"\" not in models.enabled")

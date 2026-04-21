@@ -3023,6 +3023,8 @@
       "streams": {
         "streamLabel": "Stream",
         "nameLabel": "Streamnaam",
+        "enabled": "Ingeschakeld",
+        "disabled": "Uitgeschakeld",
         "namePlaceholder": "bijv. Voederhuisje voortuin",
         "nameHelp": "Een beschrijvende naam om deze audiostream te identificeren",
         "urlLabel": "Stream-URL",

@@ -872,7 +872,9 @@ func (p *AudioPipelineService) reconfigureChangedSources(audioLevelChan chan aud
 	// receives the full desired state and removes stale monitors correctly.
 	allActiveIDs := slices.Collect(maps.Values(alreadyRunning))
 	allActiveIDs = append(allActiveIDs, newSourceIDs...)
-	if len(allActiveIDs) > 0 {
+	// Always call UpdateMonitors — even with an empty slice — so stale
+	// monitors are torn down when the last active stream is disabled.
+	if p.bufferMgr != nil {
 		monitorMap := p.buildMonitorConfigs(sourceModelMap, allActiveIDs)
 		if monErr := p.bufferMgr.UpdateMonitors(monitorMap); monErr != nil {
 			log.Warn("buffer monitor update failed during reconfigure", logger.Error(monErr))
@@ -902,11 +904,7 @@ func (p *AudioPipelineService) buildSourceConfigsWithModels() []sourceConfigWith
 	var result []sourceConfigWithModels
 
 	// RTSP streams.
-	for i := range settings.Realtime.RTSP.Streams {
-		stream := &settings.Realtime.RTSP.Streams[i]
-		if stream.URL == "" {
-			continue
-		}
+	for _, stream := range settings.Realtime.RTSP.EnabledStreams() {
 		result = append(result, sourceConfigWithModels{
 			config: &audiocore.SourceConfig{
 				DisplayName:      stream.Name,

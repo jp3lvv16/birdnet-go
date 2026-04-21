@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -23,6 +24,7 @@ func TestStreamConfig_YAML_RoundTrip(t *testing.T) {
 			stream: StreamConfig{
 				Name:      "Front Yard",
 				URL:       "rtsp://192.168.1.10/stream",
+				Enabled:   true,
 				Type:      StreamTypeRTSP,
 				Transport: "tcp",
 			},
@@ -32,6 +34,7 @@ func TestStreamConfig_YAML_RoundTrip(t *testing.T) {
 			stream: StreamConfig{
 				Name:      "Caméra Jardin 🌳",
 				URL:       "rtsp://192.168.1.20/cam",
+				Enabled:   true,
 				Type:      StreamTypeRTSP,
 				Transport: "udp",
 			},
@@ -39,9 +42,10 @@ func TestStreamConfig_YAML_RoundTrip(t *testing.T) {
 		{
 			name: "URL with query parameters",
 			stream: StreamConfig{
-				Name: "Complex URL",
-				URL:  "http://server.local/stream?auth=abc123&format=h264&quality=high",
-				Type: StreamTypeHTTP,
+				Name:    "Complex URL",
+				URL:     "http://server.local/stream?auth=abc123&format=h264&quality=high",
+				Enabled: true,
+				Type:    StreamTypeHTTP,
 			},
 		},
 		{
@@ -49,6 +53,7 @@ func TestStreamConfig_YAML_RoundTrip(t *testing.T) {
 			stream: StreamConfig{
 				Name:      "IPv6 Camera",
 				URL:       "rtsp://[2001:db8::1]:554/stream",
+				Enabled:   true,
 				Type:      StreamTypeRTSP,
 				Transport: "tcp",
 			},
@@ -56,9 +61,10 @@ func TestStreamConfig_YAML_RoundTrip(t *testing.T) {
 		{
 			name: "URL with special characters",
 			stream: StreamConfig{
-				Name: "Special Chars",
-				URL:  "rtmp://server.com/app/stream-name_v2.0?key=abc%20def&token=123%26456",
-				Type: StreamTypeRTMP,
+				Name:    "Special Chars",
+				URL:     "rtmp://server.com/app/stream-name_v2.0?key=abc%20def&token=123%26456",
+				Enabled: true,
+				Type:    StreamTypeRTMP,
 			},
 		},
 		{
@@ -66,6 +72,7 @@ func TestStreamConfig_YAML_RoundTrip(t *testing.T) {
 			stream: StreamConfig{
 				Name:      "No Transport",
 				URL:       "rtsp://192.168.1.30/cam",
+				Enabled:   true,
 				Type:      StreamTypeRTSP,
 				Transport: "", // Should remain empty after round-trip
 			},
@@ -75,6 +82,7 @@ func TestStreamConfig_YAML_RoundTrip(t *testing.T) {
 			stream: StreamConfig{
 				Name:      "Credential URL",
 				URL:       "rtsp://admin:p@ssw0rd!#$@192.168.1.40:554/stream",
+				Enabled:   true,
 				Type:      StreamTypeRTSP,
 				Transport: "tcp",
 			},
@@ -82,17 +90,19 @@ func TestStreamConfig_YAML_RoundTrip(t *testing.T) {
 		{
 			name: "HLS with HTTPS",
 			stream: StreamConfig{
-				Name: "Secure HLS",
-				URL:  "https://cdn.example.com/live/playlist.m3u8?token=xyz",
-				Type: StreamTypeHLS,
+				Name:    "Secure HLS",
+				URL:     "https://cdn.example.com/live/playlist.m3u8?token=xyz",
+				Enabled: true,
+				Type:    StreamTypeHLS,
 			},
 		},
 		{
 			name: "UDP with multicast",
 			stream: StreamConfig{
-				Name: "Multicast Feed",
-				URL:  "udp://@239.0.0.1:1234?pkt_size=1316",
-				Type: StreamTypeUDP,
+				Name:    "Multicast Feed",
+				URL:     "udp://@239.0.0.1:1234?pkt_size=1316",
+				Enabled: true,
+				Type:    StreamTypeUDP,
 			},
 		},
 	}
@@ -113,6 +123,7 @@ func TestStreamConfig_YAML_RoundTrip(t *testing.T) {
 			// Verify all fields preserved
 			assert.Equal(t, tt.stream.Name, result.Name, "Name mismatch")
 			assert.Equal(t, tt.stream.URL, result.URL, "URL mismatch")
+			assert.Equal(t, tt.stream.IsEnabled(), result.IsEnabled(), "Enabled mismatch")
 			assert.Equal(t, tt.stream.Type, result.Type, "Type mismatch")
 			assert.Equal(t, tt.stream.Transport, result.Transport, "Transport mismatch")
 		})
@@ -125,9 +136,9 @@ func TestRTSPSettings_YAML_RoundTrip(t *testing.T) {
 
 	original := RTSPSettings{
 		Streams: []StreamConfig{
-			{Name: "Stream 1", URL: "rtsp://192.168.1.10/cam1", Type: StreamTypeRTSP, Transport: "tcp"},
-			{Name: "Stream 2", URL: "http://192.168.1.20:8000/audio", Type: StreamTypeHTTP},
-			{Name: "Stream 3", URL: "udp://239.0.0.1:5004", Type: StreamTypeUDP},
+			{Name: "Stream 1", URL: "rtsp://192.168.1.10/cam1", Enabled: true, Type: StreamTypeRTSP, Transport: "tcp"},
+			{Name: "Stream 2", URL: "http://192.168.1.20:8000/audio", Enabled: true, Type: StreamTypeHTTP},
+			{Name: "Stream 3", URL: "udp://239.0.0.1:5004", Enabled: false, Type: StreamTypeUDP},
 		},
 	}
 
@@ -147,6 +158,7 @@ func TestRTSPSettings_YAML_RoundTrip(t *testing.T) {
 	for i := range original.Streams {
 		assert.Equal(t, original.Streams[i].Name, result.Streams[i].Name, "Stream %d Name mismatch", i)
 		assert.Equal(t, original.Streams[i].URL, result.Streams[i].URL, "Stream %d URL mismatch", i)
+		assert.Equal(t, original.Streams[i].IsEnabled(), result.Streams[i].IsEnabled(), "Stream %d Enabled mismatch", i)
 		assert.Equal(t, original.Streams[i].Type, result.Streams[i].Type, "Stream %d Type mismatch", i)
 		assert.Equal(t, original.Streams[i].Transport, result.Streams[i].Transport, "Stream %d Transport mismatch", i)
 	}
@@ -169,17 +181,20 @@ func TestStreamConfig_FilePersistence(t *testing.T) {
 				{
 					Name:      "Unicode Test 日本語 🐦",
 					URL:       "rtsp://user:pass@192.168.1.100:554/stream",
+					Enabled:   true,
 					Type:      StreamTypeRTSP,
 					Transport: "tcp",
 				},
 				{
-					Name: "Query Params & Ampersand",
-					URL:  "http://example.com/stream?a=1&b=2&c=test%20value",
-					Type: StreamTypeHTTP,
+					Name:    "Query Params & Ampersand",
+					URL:     "http://example.com/stream?a=1&b=2&c=test%20value",
+					Enabled: true,
+					Type:    StreamTypeHTTP,
 				},
 				{
 					Name:      "Secure RTMP",
 					URL:       "rtmps://live.twitch.tv/app/streamkey",
+					Enabled:   true,
 					Type:      StreamTypeRTMP,
 					Transport: "tcp",
 				},
@@ -210,6 +225,7 @@ func TestStreamConfig_FilePersistence(t *testing.T) {
 		loaded := loaded.RTSP.Streams[i]
 		assert.Equal(t, orig.Name, loaded.Name, "Stream %d: Name was modified", i)
 		assert.Equal(t, orig.URL, loaded.URL, "Stream %d: URL was modified", i)
+		assert.Equal(t, orig.IsEnabled(), loaded.IsEnabled(), "Stream %d: Enabled was modified", i)
 		assert.Equal(t, orig.Type, loaded.Type, "Stream %d: Type was modified", i)
 		assert.Equal(t, orig.Transport, loaded.Transport, "Stream %d: Transport was modified", i)
 	}
@@ -223,6 +239,7 @@ func TestStreamConfig_NoDataLoss_AllFieldsPreserved(t *testing.T) {
 	original := StreamConfig{
 		Name:      "Complete Stream Config",
 		URL:       "rtsp://admin:secret123@camera.local:554/h264/main/av_stream",
+		Enabled:   false,
 		Type:      StreamTypeRTSP,
 		Transport: "udp",
 	}
@@ -266,6 +283,133 @@ transport: "udp"
 	// Legacy fields should also be populated (before migration clears them)
 	assert.Len(t, rtsp.URLs, 1, "Legacy URLs should be preserved")
 	assert.Equal(t, "udp", rtsp.Transport, "Legacy Transport should be preserved")
+}
+
+func TestStreamConfig_IsEnabled(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, (&StreamConfig{Enabled: true}).IsEnabled())
+	assert.False(t, (&StreamConfig{Enabled: false}).IsEnabled())
+}
+
+func TestNormalizeRTSPStreamEnabledDefaults(t *testing.T) {
+	t.Parallel()
+
+	normalized, migrated := normalizeRTSPStreamEnabledDefaults([]any{
+		map[string]any{
+			"name": "Legacy Stream",
+			"url":  "rtsp://192.168.1.10/stream",
+			"type": StreamTypeRTSP,
+		},
+		map[string]any{
+			"name":    "Disabled Stream",
+			"url":     "rtsp://192.168.1.20/stream",
+			"enabled": false,
+			"type":    StreamTypeRTSP,
+		},
+		"not-a-stream-map",
+	})
+
+	require.True(t, migrated, "legacy enabled omissions should be materialized before unmarshal")
+	require.Len(t, normalized, 3)
+
+	first, ok := normalized[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, first["enabled"])
+
+	second, ok := normalized[1].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, false, second["enabled"])
+
+	assert.Equal(t, "not-a-stream-map", normalized[2])
+}
+
+func TestNormalizeRTSPStreamEnabledDefaults_NoChangesNeeded(t *testing.T) {
+	t.Parallel()
+
+	normalized, migrated := normalizeRTSPStreamEnabledDefaults([]any{
+		map[string]any{
+			"name":    "Explicit Stream",
+			"url":     "rtsp://192.168.1.10/stream",
+			"enabled": true,
+			"type":    StreamTypeRTSP,
+		},
+	})
+
+	assert.False(t, migrated)
+	assert.Nil(t, normalized)
+}
+
+func TestNormalizeRTSPStreamEnabledDefaults_NilValue(t *testing.T) {
+	t.Parallel()
+
+	normalized, migrated := normalizeRTSPStreamEnabledDefaults([]any{
+		map[string]any{
+			"name":    "Null Enabled",
+			"url":     "rtsp://192.168.1.10/stream",
+			"enabled": nil,
+			"type":    StreamTypeRTSP,
+		},
+	})
+
+	require.True(t, migrated, "nil enabled value should be treated as missing")
+	require.Len(t, normalized, 1)
+	first, ok := normalized[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, first["enabled"])
+}
+
+func TestNormalizeRTSPStreamEnabledDefaults_NonSliceInput(t *testing.T) {
+	t.Parallel()
+
+	normalized, migrated := normalizeRTSPStreamEnabledDefaults(map[string]any{
+		"name": "not-a-slice",
+		"url":  "rtsp://192.168.1.10/stream",
+	})
+
+	assert.False(t, migrated)
+	assert.Nil(t, normalized)
+}
+
+func TestLoad_MigratesMissingStreamEnabledToTrue(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	configYAML := `
+realtime:
+  rtsp:
+    streams:
+      - name: "Legacy Stream"
+        url: "rtsp://192.168.1.10/stream"
+        type: "rtsp"
+        transport: "tcp"
+      - name: "Explicitly Disabled"
+        url: "rtsp://192.168.1.20/stream"
+        enabled: false
+        type: "rtsp"
+        transport: "tcp"
+`
+	err := os.WriteFile(configPath, []byte(configYAML), 0o600)
+	require.NoError(t, err)
+
+	oldPath := ConfigPath
+	oldSettings := GetSettings()
+	t.Cleanup(func() {
+		ConfigPath = oldPath
+		viper.Reset()
+		SetTestSettings(oldSettings)
+	})
+
+	ConfigPath = configPath
+
+	settings, err := Load()
+	require.NoError(t, err)
+	require.Len(t, settings.Realtime.RTSP.Streams, 2)
+	assert.True(t, settings.Realtime.RTSP.Streams[0].Enabled)
+	assert.False(t, settings.Realtime.RTSP.Streams[1].Enabled)
+
+	persisted, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(persisted), "enabled: true")
+	assert.Contains(t, string(persisted), "enabled: false")
 }
 
 // TestBackwardCompatibility_LegacyOnlyConfig tests loading a pure legacy config format
