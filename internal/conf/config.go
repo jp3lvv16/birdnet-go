@@ -56,11 +56,11 @@ func DefaultConfig() *Config {
 	return &Config{
 		BirdNET: BirdNETConfig{
 			Sensitivity: 1.0,
-			Threshold:   0.75,
+			Threshold:   0.8, // raised from 0.75 to reduce false positives in my garden
 			Overlap:     1.5,
 			Locale:      "en",
-			Latitude:    0.0,
-			Longitude:   0.0,
+			Latitude:    51.5074,  // default to London, UK
+			Longitude:   -0.1278, // default to London, UK
 		},
 		Audio: AudioConfig{
 			Source:     "sysdefault",
@@ -86,36 +86,4 @@ func DefaultConfig() *Config {
 func Load(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
-	data, err := os.ReadFile(filepath.Clean(path))
-	if err != nil {
-		if os.IsNotExist(err) {
-			// Return defaults when no config file exists yet.
-			return cfg, nil
-		}
-		return nil, fmt.Errorf("reading config file %q: %w", path, err)
-	}
-
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("parsing config file %q: %w", path, err)
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid configuration: %w", err)
-	}
-
-	return cfg, nil
-}
-
-// Validate checks that configuration values are within acceptable ranges.
-func (c *Config) Validate() error {
-	if c.BirdNET.Sensitivity < 0.0 || c.BirdNET.Sensitivity > 1.5 {
-		return fmt.Errorf("birdnet.sensitivity must be between 0.0 and 1.5, got %.2f", c.BirdNET.Sensitivity)
-	}
-	if c.BirdNET.Threshold < 0.0 || c.BirdNET.Threshold > 1.0 {
-		return fmt.Errorf("birdnet.threshold must be between 0.0 and 1.0, got %.2f", c.BirdNET.Threshold)
-	}
-	if c.Server.Port < 1 || c.Server.Port > 65535 {
-		return fmt.Errorf("server.port must be between 1 and 65535, got %d", c.Server.Port)
-	}
-	return nil
-}
+	data, err := os.ReadFile(filepath.Clean(
