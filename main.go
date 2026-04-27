@@ -28,8 +28,9 @@ func main() {
 	defer cancel()
 
 	// Set up signal handling for graceful shutdown
+	// Also handle SIGHUP so the process can be cleanly stopped by init systems
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	go func() {
 		sig := <-sigCh
 		log.Printf("Received signal: %v, initiating graceful shutdown...", sig)
