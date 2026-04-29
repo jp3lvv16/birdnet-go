@@ -59,12 +59,12 @@ func DefaultConfig() *Config {
 			Threshold:   0.8, // raised from 0.75 to reduce false positives in my garden
 			Overlap:     1.5,
 			Locale:      "en",
-			Latitude:    51.5074,  // default to London, UK
-			Longitude:   -0.1278, // default to London, UK
+			Latitude:    48.8566,  // defaulting to my approximate location (Paris area)
+			Longitude:   2.3522,  // defaulting to my approximate location (Paris area)
 		},
 		Audio: AudioConfig{
 			Source:     "sysdefault",
-			Export:     false,
+			Export:     true, // enabling export by default so I don't miss interesting detections
 			ExportPath: "clips",
 			ExportType: "wav",
 		},
@@ -82,8 +82,4 @@ func DefaultConfig() *Config {
 }
 
 // Load reads a YAML configuration file from the given path and returns
-// a Config. Missing fields are filled with defaults.
-func Load(path string) (*Config, error) {
-	cfg := DefaultConfig()
-
-	data, err := os.ReadFile(filepath.Clean(
+// a Config. Missing fields are filled with d
