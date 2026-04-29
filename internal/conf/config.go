@@ -59,14 +59,14 @@ func DefaultConfig() *Config {
 			Threshold:   0.8, // raised from 0.75 to reduce false positives in my garden
 			Overlap:     1.5,
 			Locale:      "en",
-			Latitude:    48.8566,  // defaulting to my approximate location (Paris area)
+			Latitude:    48.8566, // defaulting to my approximate location (Paris area)
 			Longitude:   2.3522,  // defaulting to my approximate location (Paris area)
 		},
 		Audio: AudioConfig{
 			Source:     "sysdefault",
-			Export:     true, // enabling export by default so I don't miss interesting detections
+			Export:     true,   // enabling export by default so I don't miss interesting detections
 			ExportPath: "clips",
-			ExportType: "wav",
+			ExportType: "flac", // switched from wav to flac for better compression without quality loss
 		},
 		Database: DatabaseConfig{
 			Path: "birdnet.db",
@@ -80,6 +80,3 @@ func DefaultConfig() *Config {
 		LogLevel: "info",
 	}
 }
-
-// Load reads a YAML configuration file from the given path and returns
-// a Config. Missing fields are filled with d
