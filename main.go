@@ -30,8 +30,9 @@ func main() {
 	// Set up signal handling for graceful shutdown
 	// Also handle SIGHUP so the process can be cleanly stopped by init systems
 	// Note: on my Raspberry Pi, SIGTERM is the primary signal sent by systemd
+	// Note: also adding SIGUSR1 here in case I want to trigger a reload later
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGUSR1)
 	go func() {
 		sig := <-sigCh
 		log.Printf("Received signal: %v, initiating graceful shutdown...", sig)
